@@ -1,6 +1,5 @@
 import requests
 
-url = "https://api.frankfurter.dev/v1/latest"
 
 def getCurrency(base_currency,raw_currency,amount):
     
@@ -8,6 +7,9 @@ def getCurrency(base_currency,raw_currency,amount):
     여러 가지 통화로 지출된 값을 베이스 환율로 변환해 반환
     출력형식: float
     '''
+
+    url = "https://api.frankfurter.dev/v1/latest"
+
     if base_currency == raw_currency:
         return amount
     
