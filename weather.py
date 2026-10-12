@@ -25,10 +25,24 @@ WMO_WEATHER_CODES = {
 }
 
 
+def _safe_list_value(data: Dict[str, Any], key: str, index: int, default: Any = None) -> Any:
+    """배열 값이 없거나 인덱스 범위를 벗어나면 기본값을 반환합니다."""
+    values = data.get(key, [])
+    if not isinstance(values, list):
+        return default
+    if 0 <= index < len(values):
+        return values[index]
+    return default
+
+
 def get_detailed_weather_json(
     location_name: str, forecast_days: int = 3
 ) -> Optional[str]:
     """지명을 검색하여 좌표 변환 후, 상세 일별/시간별 예보를 구조화된 JSON 문자열로 반환합니다."""
+    # Validation for forecast_days
+    if not isinstance(forecast_days, int) or not 1 <= forecast_days <= 16:
+        raise ValueError("forecast_days must be an integer between 1 and 16.")
+    
     # 1. Geocoding API 호출
     geo_url = "https://geocoding-api.open-meteo.com/v1/search"
     geo_params = {
@@ -106,6 +120,39 @@ def get_detailed_weather_json(
     hourly_records = []
 
     for i, t in enumerate(hourly_times):
+        w_code = _safe_list_value(hourly_raw, "weather_code", i)
+        hourly_records.append(
+            {
+                "time": t,
+                "temperature": _safe_list_value(hourly_raw, "temperature_2m", i),
+                "apparent_temperature": _safe_list_value(
+                    hourly_raw, "apparent_temperature", i
+                ),
+                "relative_humidity": _safe_list_value(
+                    hourly_raw, "relative_humidity_2m", i
+                ),
+                "precipitation_probability": _safe_list_value(
+                    hourly_raw, "precipitation_probability", i
+                ),
+                "precipitation": _safe_list_value(hourly_raw, "precipitation", i),
+                "weather_code": w_code,
+                "weather_desc": WMO_WEATHER_CODES.get(w_code, "기타"),
+                "cloud_cover": _safe_list_value(hourly_raw, "cloud_cover", i),
+                "surface_pressure": _safe_list_value(
+                    hourly_raw, "surface_pressure", i
+                ),
+                "wind_speed": _safe_list_value(hourly_raw, "wind_speed_10m", i),
+                "wind_direction": _safe_list_value(
+                    hourly_raw, "wind_direction_10m", i
+                ),
+                "wind_gusts": _safe_list_value(hourly_raw, "wind_gusts_10m", i),
+                "uv_index": _safe_list_value(hourly_raw, "uv_index", i),
+            }
+        )
+
+    '''
+    # OLD CODE - Direct array access without safety checks
+    for i, t in enumerate(hourly_times):
         w_code = hourly_raw.get("weather_code", [])[i]
         hourly_records.append(
             {
@@ -131,12 +178,48 @@ def get_detailed_weather_json(
                 "uv_index": hourly_raw.get("uv_index", [])[i],
             }
         )
+    '''
 
     # 4. 일별(Daily) Columnar 데이터를 Record 단위 리스트로 재구성
     daily_raw = raw.get("daily", {})
     daily_times = daily_raw.get("time", [])
     daily_records = []
 
+    for i, d in enumerate(daily_times):
+        d_code = _safe_list_value(daily_raw, "weather_code", i)
+        daily_records.append(
+            {
+                "date": d,
+                "weather_code": d_code,
+                "weather_desc": WMO_WEATHER_CODES.get(d_code, "기타"),
+                "temp_max": _safe_list_value(daily_raw, "temperature_2m_max", i),
+                "temp_min": _safe_list_value(daily_raw, "temperature_2m_min", i),
+                "apparent_temp_max": _safe_list_value(
+                    daily_raw, "apparent_temperature_max", i
+                ),
+                "apparent_temp_min": _safe_list_value(
+                    daily_raw, "apparent_temperature_min", i
+                ),
+                "precipitation_sum": _safe_list_value(
+                    daily_raw, "precipitation_sum", i
+                ),
+                "precipitation_probability_max": _safe_list_value(
+                    daily_raw, "precipitation_probability_max", i
+                ),
+                "uv_index_max": _safe_list_value(daily_raw, "uv_index_max", i),
+                "wind_speed_max": _safe_list_value(
+                    daily_raw, "wind_speed_10m_max", i
+                ),
+                "wind_gusts_max": _safe_list_value(
+                    daily_raw, "wind_gusts_10m_max", i
+                ),
+                "sunrise": _safe_list_value(daily_raw, "sunrise", i),
+                "sunset": _safe_list_value(daily_raw, "sunset", i),
+            }
+        )
+
+    '''
+    # OLD CODE - Direct array access without safety checks
     for i, d in enumerate(daily_times):
         d_code = daily_raw.get("weather_code", [])[i]
         daily_records.append(
@@ -163,6 +246,7 @@ def get_detailed_weather_json(
                 "sunset": daily_raw.get("sunset", [])[i],
             }
         )
+    '''
 
     # 5. 최종 구조화 JSON 조립
     cur = raw.get("current", {})
