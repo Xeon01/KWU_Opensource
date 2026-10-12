@@ -61,41 +61,6 @@ def get_supported_currencies():
         return None
 
 '''
-# OLD CODE - Incorrect parameter names and invalid API request params
-
-def getCurrency(base_currency, raw_currency, amount):
-
-    '''
-    여러 가지 통화로 지출된 값을 베이스 환율로 변환해 반환
-    출력형식: float
-    '''
-
-    url = "https://api.frankfurter.dev/v1/latest"
-
-    if base_currency == raw_currency:
-        return amount
-
-    params = {
-    "base": "raw_currency",
-    "symbols": "base_currency",
-    }
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()  # HTTP 에러(예: 404, 500) 발생 시 예외 처리
-        data = response.json()
-
-        # 환율 데이터 추출 및 금액 계산
-        exchange_rate = data["rates"][base_currency]
-        converted_amount = amount * exchange_rate
-
-        return converted_amount
-
-    except Exception as e:
-        print(f"환율 변환 실패 ({raw_currency} -> {base_currency}): {e}")
-        return None
-'''
-
-'''
 # 실행 테스트용 예시코드
 supported_currencies = get_supported_currencies()
 
