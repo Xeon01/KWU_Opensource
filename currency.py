@@ -1,5 +1,15 @@
 import requests
+from datetime import datetime
 
+'''
+지출 DATA 양식
+{
+    "ID": "UserId"
+    "Time":"Time" #Year,month,day,time
+    "Currency":"BTC" #KRW, USD 등등
+    "amount":"1000.99"
+}
+'''
 
 def getCurrency(base_currency,raw_currency,amount):
     
@@ -30,6 +40,50 @@ def getCurrency(base_currency,raw_currency,amount):
         
     except Exception as e:
         print(f"환율 변환 실패 ({raw_currency} -> {base_currency}): {e}")
+        return None
+
+def _format_date(time_str: str) -> str:
+    '''
+    다양한 날짜/시간 문자열에서 YYYY-MM-DD 형식을 추출
+    '''
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(time_str.strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    # 공백 기준으로 앞부분 날짜만 슬라이싱 시도
+    return time_str.strip().split(" ")[0]
+
+def getCurrencyfromTime(base_currency: str, raw_currency: str, amount: float | str, time: str) -> float | None:
+    '''
+    여러 가지 통화로 지출된 값을 결제 시점(과거 날짜) 환율로 변환해 반환
+    출력형식: float
+    중앙유럽 표준시(CET/CEST, 독일 프랑크푸르트 시간) 기준
+    '''
+    amount = float(amount)
+    base_currency = base_currency.upper()
+    raw_currency = raw_currency.upper()
+
+    if base_currency == raw_currency:
+        return amount
+
+    date_str = _format_date(time)
+    url = f"https://api.frankfurter.dev/v1/{date_str}"
+    params = {
+        "base": raw_currency,
+        "symbols": base_currency,
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        exchange_rate = data["rates"][base_currency]
+        return amount * exchange_rate
+
+    except Exception as e:
+        print(f"결제 시점({date_str}) 환율 변환 실패 ({raw_currency} -> {base_currency}): {e}")
         return None
 
 def get_supported_currencies():
