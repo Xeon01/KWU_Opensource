@@ -1,4 +1,4 @@
-"""N-Trip 지출 관리 모듈. 여행마다 ExpenseBook을 하나씩 사용하며, 금액은 소수 둘째 자리까지 받고, 내부에서는 정산 통화의 0.01 단위 정수로 계산한다.
+"""N-Trip 지출 관리 모듈. 여행마다 ExpenseBook을 하나씩 사용하며, 금액은 소수 넷째 자리까지 받고, 내부에서는 정산 통화의 0.0001 단위 정수로 계산한다.
 
 이 모듈은 데이터베이스, HTTP, 참가자 등록 방식에 의존하지 않는다.
 """
@@ -7,6 +7,10 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from functools import lru_cache
 from datetime import date
 from math import isfinite
+
+
+_AMOUNT_SCALE = 10_000
+_AMOUNT_STEP = Decimal('0.0001')
 
 
 def _members(values):
@@ -58,21 +62,21 @@ def _positive_decimal(value):
 
 
 def _minor_units(value):
-    """유한한 금액을 검증하고 0.01원 단위 정수로 변환한다."""
+    """유한한 금액을 검증하고 0.0001원 단위 정수로 변환한다."""
     if type(value) not in (int, float, Decimal):
         raise ValueError('amount must be numeric')
     amount = Decimal(str(value))
     if not amount.is_finite():
         raise ValueError('amount must be finite')
     numerator, denominator = amount.as_integer_ratio()
-    units, remainder = divmod(numerator * 100, denominator)
+    units, remainder = divmod(numerator * _AMOUNT_SCALE, denominator)
     if remainder:
-        raise ValueError('amount must have at most two decimal places')
+        raise ValueError('amount must have at most four decimal places')
     return units
 
 
 def _money(value, *, zero=False):
-    """지출액 또는 부담액을 검증하고 0.01원 단위 정수로 반환한다."""
+    """지출액 또는 부담액을 검증하고 0.0001원 단위 정수로 반환한다."""
     units = _minor_units(value)
     if units < (0 if zero else 1):
         raise ValueError('amount is below the allowed minimum')
@@ -89,8 +93,8 @@ def _share_units(shares, participants):
 def _public_expense(expense):
     """지출 내역을 복사하고 금액을 원 단위 float로 변환한다."""
     result = deepcopy(expense)
-    result['amount'] /= 100
-    result['shares'] = {person: units / 100 for person, units in result['shares'].items()}
+    result['amount'] /= _AMOUNT_SCALE
+    result['shares'] = {person: units / _AMOUNT_SCALE for person, units in result['shares'].items()}
     return result
 
 
@@ -105,7 +109,7 @@ def minimize_transfers(balances, *, strategy='exact'):
 
 
 def _settle_units(balances, *, strategy):
-    """0.01원 단위 잔액으로 송금 계획을 계산하고 원 단위로 반환한다."""
+    """0.0001원 단위 잔액으로 송금 계획을 계산하고 원 단위로 반환한다."""
     if strategy not in ('exact', 'greedy'):
         raise ValueError('unknown settlement strategy')
     for person, amount in balances.items():
@@ -155,7 +159,7 @@ def _settle_units(balances, *, strategy):
             state[debtor] += amount
             state[creditor] -= amount
     return [
-        dict(from_person=people[i], to_person=people[j], amount=value / 100)
+        dict(from_person=people[i], to_person=people[j], amount=value / _AMOUNT_SCALE)
         for i, j, value in result
     ]
 
@@ -236,7 +240,7 @@ class ExpenseBook:
         """결제일 기준 환율로 환산한 지출과 환율 정보를 함께 저장한다."""
         conversion = self._convert_expense(original_amount, expense_currency, paid_at, rate_info)
         amount = conversion['original_amount'] * conversion['exchange_rate']
-        amount = amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        amount = amount.quantize(_AMOUNT_STEP, rounding=ROUND_HALF_UP)
         expense = self._validated(description, amount, paid_by, participants, shares)
         conversion['original_amount'] = float(conversion['original_amount'])
         conversion['exchange_rate'] = float(conversion['exchange_rate'])
@@ -321,16 +325,16 @@ class ExpenseBook:
     def _public_summary(self, report):
         """정수 단위 집계를 원 단위 float로 변환한다."""
         return {
-            'total': report['total'] / 100,
+            'total': report['total'] / _AMOUNT_SCALE,
             'settlement_currency': self.settlement_currency,
             'people': {
-                person: {key: value / 100 for key, value in row.items()}
+                person: {key: value / _AMOUNT_SCALE for key, value in row.items()}
                 for person, row in report['people'].items()
             },
         }
 
     def _summary_units(self):
-        """0.01원 단위 정수로 결제액, 부담액, 잔액을 집계한다."""
+        """0.0001원 단위 정수로 결제액, 부담액, 잔액을 집계한다."""
         people = {p: dict(paid=0, owed=0, balance=0) for p in self.participants}
         for expense in self._expenses.values():
             people[expense['paid_by']]['paid'] += expense['amount']
